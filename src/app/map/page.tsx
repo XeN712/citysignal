@@ -500,10 +500,10 @@ export default function MapPage() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
 
-                {/* Titre */}
+                {/* Titre – amélioré pour lisibilité */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Titre du problème <span className="text-red-500">*</span>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                    Titre du problème <span className="text-red-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -511,17 +511,17 @@ export default function MapPage() {
                     onChange={(e) => setTitre(e.target.value)}
                     required
                     maxLength={100}
-                    placeholder="Ex: Poubelle renversee rue principale"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm
-                               focus:outline-none focus:ring-2 focus:ring-red-500
-                               focus:border-transparent placeholder-gray-400"
+                    placeholder="Ex : Poubelle renversée rue principale"
+                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900
+                               focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500
+                               placeholder-gray-500 bg-white shadow-sm"
                   />
                 </div>
 
-                {/* Catégorie */}
+                {/* Catégorie – amélioré */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Categorie <span className="text-red-500">*</span>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                    Catégorie <span className="text-red-600">*</span>
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(categoryConfig).map(([key, val]) => (
@@ -529,18 +529,17 @@ export default function MapPage() {
                         key={key}
                         type="button"
                         onClick={() => setCategorie(key)}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm
-                                    font-medium transition-all text-left
+                        className={`flex items-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all text-left
                                     ${categorie === key
-                                      ? 'border-current text-white shadow-sm'
-                                      : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                      ? 'border-current text-white shadow-md'
+                                      : 'border-gray-400 text-gray-700 hover:border-gray-600 hover:bg-gray-50'}`}
                         style={categorie === key
                           ? { backgroundColor: val.color, borderColor: val.color }
                           : {}}
                       >
                         <span
-                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0
-                            ${categorie === key ? 'bg-white/60' : val.dot}`}
+                          className={`w-3 h-3 rounded-full flex-shrink-0
+                            ${categorie === key ? 'bg-white/80' : val.dot}`}
                         />
                         <span className="truncate">{val.label}</span>
                       </button>
@@ -548,54 +547,54 @@ export default function MapPage() {
                   </div>
                 </div>
 
-                {/* Description */}
+                {/* Description – amélioré */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Description <span className="text-gray-400 font-normal">(optionnel)</span>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                    Description <span className="text-gray-500 font-normal text-sm">(optionnel)</span>
                   </label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                    placeholder="Detaillez le probleme..."
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm
-                               focus:outline-none focus:ring-2 focus:ring-red-500
-                               focus:border-transparent resize-none placeholder-gray-400"
+                    rows={4}
+                    placeholder="Détails supplémentaires..."
+                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900
+                               focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500
+                               resize-y placeholder-gray-500 bg-white shadow-sm"
                   />
                 </div>
 
-                {/* Photo */}
+                {/* Photo – amélioré */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Photo <span className="text-gray-400 font-normal">(max 5 Mo)</span>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">
+                    Photo <span className="text-gray-500 font-normal text-sm">(max 5 Mo)</span>
                   </label>
                   {!photoPreview ? (
-                    <label className="flex flex-col items-center justify-center w-full h-28
-                                      border-2 border-dashed border-gray-200 rounded-xl cursor-pointer
-                                      hover:border-red-400 hover:bg-red-50/50 transition-all group">
-                      <svg className="w-8 h-8 text-gray-300 group-hover:text-red-400 transition mb-1"
+                    <label className="flex flex-col items-center justify-center w-full h-32
+                                      border-2 border-dashed border-gray-400 rounded-xl cursor-pointer
+                                      hover:border-red-500 hover:bg-red-50/30 transition-all group">
+                      <svg className="w-10 h-10 text-gray-500 group-hover:text-red-500 transition mb-2"
                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                           d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0
                              012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0
                              00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                       </svg>
-                      <span className="text-xs text-gray-400 group-hover:text-red-500 transition">
+                      <span className="text-sm text-gray-600 group-hover:text-red-600 transition">
                         Cliquez pour ajouter une photo
                       </span>
                       <input type="file" accept="image/*" onChange={handleFileChange} className="hidden"/>
                     </label>
                   ) : (
-                    <div className="relative rounded-xl overflow-hidden border border-gray-200">
-                      <img src={photoPreview} alt="Apercu"
-                           className="w-full h-40 object-cover"/>
+                    <div className="relative rounded-xl overflow-hidden border border-gray-400 shadow-sm">
+                      <img src={photoPreview} alt="Aperçu"
+                           className="w-full h-44 object-cover"/>
                       <button
                         type="button"
                         onClick={() => { setSelectedFile(null); setPhotoPreview(null) }}
-                        className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80
+                        className="absolute top-3 right-3 w-8 h-8 bg-black/70 hover:bg-black/90
                                    rounded-full flex items-center justify-center text-white transition"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                 d="M6 18L18 6M6 6l12 12"/>
                         </svg>
@@ -604,45 +603,44 @@ export default function MapPage() {
                   )}
                 </div>
 
-                {/* Position */}
-                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-3">
-                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                {/* Position – amélioré */}
+                <div className="flex items-center gap-3 bg-gray-100 rounded-xl px-4 py-3.5 text-sm">
+                  <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                   </svg>
-                  <span className="text-xs text-gray-600">
-                    Position : <span className="font-mono font-medium text-gray-800">
+                  <span className="font-medium text-gray-800">
+                    Position : <span className="font-mono text-gray-900 font-semibold">
                       {lat?.toFixed(5)}, {lng?.toFixed(5)}
                     </span>
                   </span>
                 </div>
 
-                {/* Boutons */}
-                <div className="flex gap-3 pt-2">
+                {/* Boutons – légèrement améliorés pour contraste */}
+                <div className="flex gap-4 pt-4">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
                     disabled={loading}
-                    className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl
-                               hover:bg-gray-200 transition font-medium text-sm disabled:opacity-50"
+                    className="flex-1 px-5 py-3.5 bg-gray-200 text-gray-800 font-medium rounded-xl
+                               hover:bg-gray-300 transition disabled:opacity-50"
                   >
                     Annuler
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl
-                               transition font-medium text-sm flex items-center justify-center gap-2
-                               disabled:opacity-60 disabled:cursor-not-allowed"
+                    className={`flex-1 px-5 py-3.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl
+                               transition flex items-center justify-center gap-2
+                               disabled:opacity-60 disabled:cursor-not-allowed shadow-sm`}
                   >
                     {loading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white/40 border-t-white
-                                        rounded-full animate-spin" />
-                        Envoi...
+                        <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        Envoi en cours...
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                         </svg>
@@ -662,7 +660,7 @@ export default function MapPage() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium
+            className={`flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium
                         animate-in slide-in-from-right duration-300 max-w-xs
                         ${toast.type === 'success'
                           ? 'bg-green-600 text-white'
