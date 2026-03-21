@@ -1,22 +1,10 @@
 'use client'
 
-import 'leaflet/dist/leaflet.css'
-import { useEffect, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import type { LatLngExpression } from 'leaflet'
-import L from 'leaflet'
 
-// ─── FIX ICÔNES LEAFLET ───────────────────────────────────────────────────────
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
-
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
+// ─── CONFIG (zéro import Leaflet ici) ─────────────────────────────────────────
 const categoryConfig: Record<string, { color: string; label: string; dot: string }> = {
   voirie:    { color: '#f97316', label: 'Voirie / Chaussée',    dot: 'bg-orange-500' },
   proprete:  { color: '#22c55e', label: 'Propreté / Déchets',   dot: 'bg-green-500'  },
@@ -26,40 +14,11 @@ const categoryConfig: Record<string, { color: string; label: string; dot: string
 }
 
 const statutConfig: Record<string, { label: string; bg: string; text: string }> = {
-  nouveau:  { label: 'Nouveau',  bg: 'bg-red-100',    text: 'text-red-700'    },
-  en_cours: { label: 'En cours', bg: 'bg-yellow-100', text: 'text-yellow-700' },
-  resolu:   { label: 'Résolu',   bg: 'bg-green-100',  text: 'text-green-700'  },
+  nouveau:  { label: 'Nouveau',  bg: '#fee2e2', text: '#b91c1c' },
+  en_cours: { label: 'En cours', bg: '#fef9c3', text: '#a16207' },
+  resolu:   { label: 'Résolu',   bg: '#dcfce7', text: '#15803d' },
 }
 
-function makeCategoryIcon(categorie: string) {
-  const color = categoryConfig[categorie]?.color ?? '#ef4444'
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
-      <path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z"
-        fill="${color}" stroke="white" stroke-width="2"/>
-      <circle cx="16" cy="16" r="6" fill="white"/>
-    </svg>`
-  return L.divIcon({ html: svg, className: '', iconSize: [32, 42], iconAnchor: [16, 42], popupAnchor: [0, -44] })
-}
-
-function makeUserIcon() {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
-      <path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z"
-        fill="#ef4444" stroke="white" stroke-width="2"/>
-      <circle cx="16" cy="16" r="5" fill="white"/>
-      <circle cx="16" cy="16" r="3" fill="#ef4444"/>
-    </svg>`
-  return L.divIcon({ html: svg, className: '', iconSize: [32, 42], iconAnchor: [16, 42], popupAnchor: [0, -44] })
-}
-
-function RecenterMap({ position }: { position: LatLngExpression }) {
-  const map = useMap()
-  useEffect(() => { if (map) map.setView(position, 13) }, [position, map])
-  return null
-}
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
 interface Signalement {
   id: string
   titre: string
@@ -74,57 +33,164 @@ interface Signalement {
 
 interface Toast { id: number; message: string; type: 'success' | 'error' }
 
-// ─── COMPOSANT PRINCIPAL (client only) ───────────────────────────────────────
 export default function MapClient() {
-  const [position, setPosition]         = useState<LatLngExpression | null>(null)
+  const mapRef        = useRef<HTMLDivElement>(null)
+  const leafletMap    = useRef<any>(null)
+  const markersRef    = useRef<any[]>([])
+  const userMarkerRef = useRef<any>(null)
+  const L             = useRef<any>(null)   // instance Leaflet chargée dynamiquement
+
   const [isModalOpen, setIsModalOpen]   = useState(false)
   const [signalements, setSignalements] = useState<Signalement[]>([])
   const [loadingMap, setLoadingMap]     = useState(true)
   const [toasts, setToasts]             = useState<Toast[]>([])
+  const [mapReady, setMapReady]         = useState(false)
 
   const [titre, setTitre]               = useState('')
   const [description, setDescription]   = useState('')
   const [categorie, setCategorie]       = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [lat, setLat]                   = useState<number | null>(null)
-  const [lng, setLng]                   = useState<number | null>(null)
+  const [lat, setLat]                   = useState<number>(6.1725)
+  const [lng, setLng]                   = useState<number>(1.2312)
   const [loading, setLoading]           = useState(false)
   const [filterCat, setFilterCat]       = useState<string>('all')
   const [isAdmin, setIsAdmin]           = useState(false)
 
-  const defaultPosition: LatLngExpression = [6.1725, 1.2312]
-
+  // ── Admin ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+    supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.user_metadata?.role === 'admin') setIsAdmin(true)
-    }
-    checkAdmin()
+    })
   }, [])
 
-  const addToast = (message: string, type: 'success' | 'error') => {
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  const addToast = useCallback((message: string, type: 'success' | 'error') => {
     const id = Date.now()
     setToasts(prev => [...prev, { id, message, type }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+  }, [])
+
+  // ── Helper icône ───────────────────────────────────────────────────────────
+  const makeIcon = (Lf: any, color: string, isUser = false) => {
+    const inner = isUser
+      ? `<circle cx="16" cy="16" r="5" fill="white"/><circle cx="16" cy="16" r="3" fill="${color}"/>`
+      : `<circle cx="16" cy="16" r="6" fill="white"/>`
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42">
+      <path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 26 16 26S32 26 32 16C32 7.163 24.837 0 16 0z"
+        fill="${color}" stroke="white" stroke-width="2"/>${inner}</svg>`
+    return Lf.divIcon({ html: svg, className: '', iconSize: [32, 42], iconAnchor: [16, 42], popupAnchor: [0, -44] })
   }
 
+  // ── Init Leaflet DANS useEffect (jamais exécuté côté serveur) ──────────────
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setPosition([pos.coords.latitude, pos.coords.longitude])
-          setLat(pos.coords.latitude)
-          setLng(pos.coords.longitude)
-        },
-        () => { setPosition(defaultPosition); setLat(6.1725); setLng(1.2312) },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      )
-    } else {
-      setPosition(defaultPosition); setLat(6.1725); setLng(1.2312)
+    if (!mapRef.current || leafletMap.current) return
+
+    // ✅ import() dynamique = window n'est accédé qu'ici, côté client uniquement
+    import('leaflet').then((leafletModule) => {
+      const Lf = leafletModule.default
+
+      // Injecter le CSS Leaflet dynamiquement
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link')
+        link.id   = 'leaflet-css'
+        link.rel  = 'stylesheet'
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+        document.head.appendChild(link)
+      }
+
+      // Fix icônes
+      delete (Lf.Icon.Default.prototype as any)._getIconUrl
+      Lf.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      })
+
+      L.current = Lf
+
+      // Créer la carte
+      const map = Lf.map(mapRef.current!, { zoomControl: true })
+      leafletMap.current = map
+
+      Lf.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map)
+
+      // Géolocalisation
+      const fallback = () => {
+        map.setView([6.1725, 1.2312], 13)
+        userMarkerRef.current = Lf.marker([6.1725, 1.2312], { icon: makeIcon(Lf, '#ef4444', true) })
+          .addTo(map).bindPopup('<strong>Position par défaut — Lomé</strong>')
+      }
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const uLat = pos.coords.latitude
+            const uLng = pos.coords.longitude
+            setLat(uLat); setLng(uLng)
+            map.setView([uLat, uLng], 13)
+            userMarkerRef.current = Lf.marker([uLat, uLng], { icon: makeIcon(Lf, '#ef4444', true) })
+              .addTo(map).bindPopup('<strong>Vous êtes ici</strong>')
+          },
+          fallback,
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        )
+      } else {
+        fallback()
+      }
+
+      setMapReady(true)
+    })
+
+    return () => {
+      if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null }
     }
   }, [])
 
+  // ── Mise à jour marqueurs ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !leafletMap.current || !L.current) return
+    const Lf  = L.current
+    const map = leafletMap.current
+
+    markersRef.current.forEach(m => m.remove())
+    markersRef.current = []
+
+    const filtered = filterCat === 'all'
+      ? signalements : signalements.filter(s => s.categorie === filterCat)
+
+    filtered.forEach((s) => {
+      const color    = categoryConfig[s.categorie]?.color ?? '#8b5cf6'
+      const catConf  = categoryConfig[s.categorie]  ?? categoryConfig['autre']
+      const statConf = statutConfig[s.statut]       ?? statutConfig['nouveau']
+      const dateStr  = new Date(s.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+
+      const popupHtml = `
+        <div style="min-width:200px;padding:4px 0">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <strong style="font-size:13px;color:#111">${s.titre}</strong>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px;background:${statConf.bg};color:${statConf.text};white-space:nowrap">
+              ${statConf.label}
+            </span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>
+            <span style="font-size:11px;color:#666">${catConf.label}</span>
+          </div>
+          ${s.description ? `<p style="font-size:11px;color:#555;margin-bottom:8px">${s.description}</p>` : ''}
+          ${s.photo_url ? `<img src="${s.photo_url}" style="width:100%;height:96px;object-fit:cover;border-radius:8px;margin-bottom:8px;border:1px solid #e5e7eb"/>` : ''}
+          <p style="font-size:10px;color:#9ca3af">${dateStr}</p>
+        </div>`
+
+      const marker = Lf.marker([s.latitude, s.longitude], { icon: makeIcon(Lf, color) })
+        .addTo(map).bindPopup(popupHtml, { minWidth: 220 })
+      markersRef.current.push(marker)
+    })
+  }, [signalements, filterCat, mapReady])
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchSignalements = useCallback(async () => {
     setLoadingMap(true)
     try {
@@ -132,15 +198,16 @@ export default function MapClient() {
         .from('signalements').select('*').order('created_at', { ascending: false })
       if (error) throw error
       setSignalements(data ?? [])
-    } catch (err: any) {
+    } catch {
       addToast('Erreur lors du chargement des signalements', 'error')
     } finally {
       setLoadingMap(false)
     }
-  }, [])
+  }, [addToast])
 
   useEffect(() => { fetchSignalements() }, [fetchSignalements])
 
+  // ── File ───────────────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -151,11 +218,11 @@ export default function MapClient() {
     reader.readAsDataURL(file)
   }
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!titre.trim()) return addToast('Le titre est obligatoire', 'error')
     if (!categorie)    return addToast('Choisissez une catégorie', 'error')
-    if (lat === null || lng === null) return addToast('Position non disponible', 'error')
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -165,15 +232,14 @@ export default function MapClient() {
         const path = `signalements/${Date.now()}.${ext}`
         const { error: uploadError } = await supabase.storage.from('photos').upload(path, selectedFile)
         if (uploadError) throw uploadError
-        const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path)
-        photo_url = urlData.publicUrl
+        photo_url = supabase.storage.from('photos').getPublicUrl(path).data.publicUrl
       }
-      const { error: insertError } = await supabase.from('signalements').insert({
+      const { error } = await supabase.from('signalements').insert({
         titre: titre.trim(), description: description.trim() || null,
         categorie, latitude: lat, longitude: lng,
         statut: 'nouveau', photo_url, user_id: user?.id ?? null,
       })
-      if (insertError) throw insertError
+      if (error) throw error
       addToast('Signalement envoyé avec succès !', 'success')
       setTitre(''); setDescription(''); setCategorie('')
       setSelectedFile(null); setPhotoPreview(null); setIsModalOpen(false)
@@ -185,21 +251,8 @@ export default function MapClient() {
     }
   }
 
-  const filteredSignalements = filterCat === 'all'
-    ? signalements : signalements.filter(s => s.categorie === filterCat)
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-
-  if (!position) {
-    return (
-      <div style={{ height: '100vh' }} className="flex flex-col items-center justify-center bg-gray-50 gap-4">
-        <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-600 font-medium">Localisation en cours...</p>
-        <p className="text-sm text-gray-400">Autorisez la géolocalisation si demandé</p>
-      </div>
-    )
-  }
+  const filteredCount = filterCat === 'all'
+    ? signalements.length : signalements.filter(s => s.categorie === filterCat).length
 
   return (
     <div style={{ height: '100vh', width: '100vw' }} className="relative flex flex-col">
@@ -223,10 +276,7 @@ export default function MapClient() {
           {loadingMap ? (
             <div className="w-4 h-4 border-2 border-gray-300 border-t-red-500 rounded-full animate-spin" />
           ) : (
-            <span>
-              <span className="font-bold text-gray-800">{filteredSignalements.length}</span>
-              {' '}signalement{filteredSignalements.length !== 1 ? 's' : ''}
-            </span>
+            <span><span className="font-bold text-gray-800">{filteredCount}</span>{' '}signalement{filteredCount !== 1 ? 's' : ''}</span>
           )}
         </div>
       </header>
@@ -234,8 +284,7 @@ export default function MapClient() {
       {/* BOUTON ADMIN */}
       {isAdmin && (
         <div className="absolute top-32 right-6 z-[1000]">
-          <Link href="/admin"
-            className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg shadow-md transition-all flex items-center gap-2">
+          <Link href="/admin" className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg shadow-md transition-all flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -265,58 +314,11 @@ export default function MapClient() {
 
       {/* CARTE */}
       <div className="flex-1 relative" style={{ minHeight: 0 }}>
-        <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }} className="z-0">
-          <RecenterMap position={position} />
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={position} icon={makeUserIcon()}>
-            <Popup>
-              <div className="text-center">
-                <p className="font-semibold text-gray-800 text-sm">Vous êtes ici</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {Array.isArray(position)
-                    ? `${(position as [number,number])[0].toFixed(5)}, ${(position as [number,number])[1].toFixed(5)}`
-                    : ''}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-          {filteredSignalements.map((s) => {
-            const catConf  = categoryConfig[s.categorie]  ?? categoryConfig['autre']
-            const statConf = statutConfig[s.statut]       ?? statutConfig['nouveau']
-            return (
-              <Marker key={s.id} position={[s.latitude, s.longitude]} icon={makeCategoryIcon(s.categorie)}>
-                <Popup minWidth={220}>
-                  <div className="py-1 min-w-[200px]">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1">{s.titre}</h3>
-                      <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${statConf.bg} ${statConf.text}`}>
-                        {statConf.label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catConf.color }} />
-                      <span className="text-xs text-gray-500">{catConf.label}</span>
-                    </div>
-                    {s.description && <p className="text-xs text-gray-600 mb-2 leading-relaxed">{s.description}</p>}
-                    {s.photo_url && (
-                      <img src={s.photo_url} alt="Photo" className="w-full h-28 object-cover rounded-lg mb-2 border border-gray-200" />
-                    )}
-                    <p className="text-[10px] text-gray-400 mt-1">{formatDate(s.created_at)}</p>
-                  </div>
-                </Popup>
-              </Marker>
-            )
-          })}
-        </MapContainer>
+        <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
 
         {/* BOUTON FLOTTANT */}
         <button onClick={() => setIsModalOpen(true)}
-          className="absolute bottom-6 right-6 z-[1000] bg-red-600 hover:bg-red-700
-                     text-white w-14 h-14 rounded-full flex items-center justify-center
-                     shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95"
+          className="absolute bottom-6 right-6 z-[1000] bg-red-600 hover:bg-red-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95"
           aria-label="Signaler un problème">
           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -369,9 +371,7 @@ export default function MapClient() {
                   </label>
                   <input type="text" value={titre} onChange={(e) => setTitre(e.target.value)}
                     required maxLength={100} placeholder="Ex : Poubelle renversée rue principale"
-                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900
-                               focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500
-                               placeholder-gray-500 bg-white shadow-sm" />
+                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 placeholder-gray-500 bg-white shadow-sm" />
                 </div>
 
                 <div>
@@ -397,9 +397,7 @@ export default function MapClient() {
                   </label>
                   <textarea value={description} onChange={(e) => setDescription(e.target.value)}
                     rows={4} placeholder="Détails supplémentaires..."
-                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900
-                               focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500
-                               resize-y placeholder-gray-500 bg-white shadow-sm" />
+                    className="w-full px-4 py-3.5 border border-gray-400 rounded-xl text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-y placeholder-gray-500 bg-white shadow-sm" />
                 </div>
 
                 <div>
@@ -433,7 +431,7 @@ export default function MapClient() {
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
                   </svg>
                   <span className="font-medium text-gray-800">
-                    Position : <span className="font-mono text-gray-900 font-semibold">{lat?.toFixed(5)}, {lng?.toFixed(5)}</span>
+                    Position : <span className="font-mono text-gray-900 font-semibold">{lat.toFixed(5)}, {lng.toFixed(5)}</span>
                   </span>
                 </div>
 
