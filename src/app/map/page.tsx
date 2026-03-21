@@ -1,33 +1,58 @@
 'use client'
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import L, { LatLngExpression } from 'leaflet'
+import dynamic from 'next/dynamic'
 import { useEffect, useState, useCallback } from 'react'
+import { useMap } from 'react-leaflet'          // ✅ FIX 1 : import direct, PAS dynamic()
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import type { LatLngExpression } from 'leaflet'
+import L from 'leaflet'
 
-// ─── FIX ICONES LEAFLET ───────────────────────────────────────────────────────
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
+// ─── Imports dynamiques pour Leaflet ──────────────────────────────────────────
+const MapContainer = dynamic(
+  () => import('react-leaflet').then(mod => mod.MapContainer),
+  { ssr: false }
+) as any
 
-// ─── ICONES PAR CATEGORIE ─────────────────────────────────────────────────────
+const TileLayer = dynamic(
+  () => import('react-leaflet').then(mod => mod.TileLayer),
+  { ssr: false }
+) as any
+
+const Marker = dynamic(
+  () => import('react-leaflet').then(mod => mod.Marker),
+  { ssr: false }
+) as any
+
+const Popup = dynamic(
+  () => import('react-leaflet').then(mod => mod.Popup),
+  { ssr: false }
+) as any
+
+// ─── FIX ICÔNES LEAFLET ───────────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  delete (L.Icon.Default.prototype as any)._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  })
+}
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
 const categoryConfig: Record<string, { color: string; label: string; dot: string }> = {
-  voirie:   { color: '#f97316', label: 'Voirie / Chaussée',     dot: 'bg-orange-500' },
-  proprete: { color: '#22c55e', label: 'Propreté / Déchets',    dot: 'bg-green-500'  },
-  eclairage:{ color: '#eab308', label: 'Éclairage public',      dot: 'bg-yellow-500' },
-  eau:      { color: '#3b82f6', label: 'Fuite d\'eau / Inond.', dot: 'bg-blue-500'   },
-  autre:    { color: '#8b5cf6', label: 'Autre',                  dot: 'bg-violet-500' },
+  voirie:    { color: '#f97316', label: 'Voirie / Chaussée',     dot: 'bg-orange-500' },
+  proprete:  { color: '#22c55e', label: 'Propreté / Déchets',    dot: 'bg-green-500'  },
+  eclairage: { color: '#eab308', label: 'Éclairage public',      dot: 'bg-yellow-500' },
+  eau:       { color: '#3b82f6', label: "Fuite d'eau / Inond.",  dot: 'bg-blue-500'   },
+  autre:     { color: '#8b5cf6', label: 'Autre',                 dot: 'bg-violet-500' },
 }
 
 const statutConfig: Record<string, { label: string; bg: string; text: string }> = {
-  nouveau:     { label: 'Nouveau',     bg: 'bg-red-100',    text: 'text-red-700'    },
-  en_cours:    { label: 'En cours',    bg: 'bg-yellow-100', text: 'text-yellow-700' },
-  resolu:      { label: 'Résolu',      bg: 'bg-green-100',  text: 'text-green-700'  },
+  nouveau:  { label: 'Nouveau',  bg: 'bg-red-100',    text: 'text-red-700'    },
+  en_cours: { label: 'En cours', bg: 'bg-yellow-100', text: 'text-yellow-700' },
+  resolu:   { label: 'Résolu',   bg: 'bg-green-100',  text: 'text-green-700'  },
 }
 
 function makeCategoryIcon(categorie: string) {
@@ -41,9 +66,9 @@ function makeCategoryIcon(categorie: string) {
   return L.divIcon({
     html: svg,
     className: '',
-    iconSize:   [32, 42],
+    iconSize: [32, 42],
     iconAnchor: [16, 42],
-    popupAnchor:[0, -44],
+    popupAnchor: [0, -44],
   })
 }
 
@@ -58,16 +83,19 @@ function makeUserIcon() {
   return L.divIcon({
     html: svg,
     className: '',
-    iconSize:   [32, 42],
+    iconSize: [32, 42],
     iconAnchor: [16, 42],
-    popupAnchor:[0, -44],
+    popupAnchor: [0, -44],
   })
 }
 
 // ─── COMPOSANT RE-CENTER ──────────────────────────────────────────────────────
+// ✅ FIX 1 : useMap() s'utilise DANS un composant enfant du MapContainer, import direct
 function RecenterMap({ position }: { position: LatLngExpression }) {
   const map = useMap()
-  useEffect(() => { map.setView(position, 13) }, [position, map])
+  useEffect(() => {
+    if (map) map.setView(position, 13)
+  }, [position, map])
   return null
 }
 
@@ -84,61 +112,53 @@ interface Signalement {
   created_at: string
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────────────
 interface Toast { id: number; message: string; type: 'success' | 'error' }
 
 // ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────────
 export default function MapPage() {
-  const [position, setPosition]       = useState<LatLngExpression | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [position, setPosition]         = useState<LatLngExpression | null>(null)
+  const [isModalOpen, setIsModalOpen]   = useState(false)
   const [signalements, setSignalements] = useState<Signalement[]>([])
-  const [loadingMap, setLoadingMap]   = useState(true)
-  const [toasts, setToasts]           = useState<Toast[]>([])
+  const [loadingMap, setLoadingMap]     = useState(true)
+  const [toasts, setToasts]             = useState<Toast[]>([])
 
-  // États du formulaire
-  const [titre, setTitre]             = useState('')
-  const [description, setDescription] = useState('')
-  const [categorie, setCategorie]     = useState('')
+  const [titre, setTitre]               = useState('')
+  const [description, setDescription]   = useState('')
+  const [categorie, setCategorie]       = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [lat, setLat]                 = useState<number | null>(null)
-  const [lng, setLng]                 = useState<number | null>(null)
-  const [loading, setLoading]         = useState(false)
-  const [filterCat, setFilterCat]     = useState<string>('all')
-
-  // État pour savoir si l'utilisateur est admin
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [lat, setLat]                   = useState<number | null>(null)
+  const [lng, setLng]                   = useState<number | null>(null)
+  const [loading, setLoading]           = useState(false)
+  const [filterCat, setFilterCat]       = useState<string>('all')
+  const [isAdmin, setIsAdmin]           = useState(false)
 
   const defaultPosition: LatLngExpression = [6.1725, 1.2312]
 
-  // Vérifier si l'utilisateur est admin connecté
+  // ── Vérification admin ─────────────────────────────────────────────────────
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user?.user_metadata?.role === 'admin') {
-        setIsAdmin(true)
-      }
+      if (user?.user_metadata?.role === 'admin') setIsAdmin(true)
     }
     checkAdmin()
   }, [])
 
-  // ── Toast helper ─────────────────────────────────────────────────────────────
+  // ── Toast helper ───────────────────────────────────────────────────────────
   const addToast = (message: string, type: 'success' | 'error') => {
     const id = Date.now()
     setToasts(prev => [...prev, { id, message, type }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }
 
-  // ── Géolocalisation ───────────────────────────────────────────────────────────
+  // ── Géolocalisation ────────────────────────────────────────────────────────
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const newLat = pos.coords.latitude
-          const newLng = pos.coords.longitude
-          setPosition([newLat, newLng])
-          setLat(newLat)
-          setLng(newLng)
+          setPosition([pos.coords.latitude, pos.coords.longitude])
+          setLat(pos.coords.latitude)
+          setLng(pos.coords.longitude)
         },
         () => {
           setPosition(defaultPosition)
@@ -154,7 +174,7 @@ export default function MapPage() {
     }
   }, [])
 
-  // ── Chargement des signalements ───────────────────────────────────────────────
+  // ── Fetch signalements ─────────────────────────────────────────────────────
   const fetchSignalements = useCallback(async () => {
     setLoadingMap(true)
     try {
@@ -166,6 +186,7 @@ export default function MapPage() {
       setSignalements(data ?? [])
     } catch (err: any) {
       console.error('Erreur fetch signalements:', err)
+      addToast('Erreur lors du chargement des signalements', 'error')
     } finally {
       setLoadingMap(false)
     }
@@ -173,91 +194,84 @@ export default function MapPage() {
 
   useEffect(() => { fetchSignalements() }, [fetchSignalements])
 
-  // ── Sélection fichier + preview ───────────────────────────────────────────────
+  // ── FIX 3 : handleFileChange ───────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        addToast('Fichier trop lourd (max 5 Mo)', 'error')
-        return
-      }
-      setSelectedFile(file)
-      setPhotoPreview(URL.createObjectURL(file))
-    }
-  }
-
-  // ── Upload photo vers Supabase Storage ────────────────────────────────────────
-  const uploadPhoto = async (file: File): Promise<string | null> => {
-    const ext      = file.name.split('.').pop()
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const filePath = `signalements/${fileName}`
-
-    const { error } = await supabase.storage
-      .from('photos')
-      .upload(filePath, file, { contentType: file.type, upsert: false })
-
-    if (error) throw error
-
-    const { data } = supabase.storage.from('photos').getPublicUrl(filePath)
-    return data.publicUrl
-  }
-
-  // ── Soumission ────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!titre.trim() || !categorie || !lat || !lng) {
-      addToast('Remplissez les champs obligatoires (titre, catégorie)', 'error')
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      addToast('La photo dépasse 5 Mo', 'error')
       return
     }
+    setSelectedFile(file)
+    const reader = new FileReader()
+    reader.onloadend = () => setPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  // ── FIX 2 : handleSubmit ───────────────────────────────────────────────────
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!titre.trim()) return addToast('Le titre est obligatoire', 'error')
+    if (!categorie)    return addToast('Choisissez une catégorie', 'error')
+    if (lat === null || lng === null) return addToast('Position non disponible', 'error')
+
     setLoading(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+
       let photo_url: string | null = null
+
+      // Upload photo si sélectionnée
       if (selectedFile) {
-        photo_url = await uploadPhoto(selectedFile)
+        const ext  = selectedFile.name.split('.').pop()
+        const path = `signalements/${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(path, selectedFile, { upsert: false })
+        if (uploadError) throw uploadError
+        const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path)
+        photo_url = urlData.publicUrl
       }
 
-      const { error } = await supabase
-        .from('signalements')
-        .insert({
-          titre:       titre.trim(),
-          description: description.trim() || null,
-          categorie,
-          latitude:    lat,
-          longitude:   lng,
-          statut:      'nouveau',
-          photo_url,
-        })
+      const { error: insertError } = await supabase.from('signalements').insert({
+        titre:       titre.trim(),
+        description: description.trim() || null,
+        categorie,
+        latitude:    lat,
+        longitude:   lng,
+        statut:      'nouveau',
+        photo_url,
+        user_id:     user?.id ?? null,
+      })
 
-      if (error) throw error
+      if (insertError) throw insertError
 
-      addToast('Signalement envoyé avec succes !', 'success')
+      addToast('Signalement envoyé avec succès !', 'success')
+      // Reset formulaire
       setTitre('')
       setDescription('')
       setCategorie('')
       setSelectedFile(null)
       setPhotoPreview(null)
       setIsModalOpen(false)
-      fetchSignalements() // Recharge les marqueurs
+      fetchSignalements()
     } catch (err: any) {
-      console.error('Erreur Supabase:', err)
-      addToast('Erreur : ' + (err.message || 'Problème inconnu'), 'error')
+      console.error('Erreur handleSubmit:', err)
+      addToast(err.message ?? 'Erreur lors de l\'envoi', 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  // ── Filtrage ──────────────────────────────────────────────────────────────────
+  // ── Filtrage ───────────────────────────────────────────────────────────────
   const filteredSignalements = filterCat === 'all'
     ? signalements
     : signalements.filter(s => s.categorie === filterCat)
 
-  // ── Formatage date ────────────────────────────────────────────────────────────
   const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('fr-FR', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    })
+    new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (!position) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-gray-50 gap-4">
@@ -269,9 +283,9 @@ export default function MapPage() {
   }
 
   return (
-    <div className="h-screen w-full relative flex flex-col">
+    <div style={{ height: '100vh', width: '100vw' }} className="relative flex flex-col">
 
-      {/* ── NAVBAR ─────────────────────────────────────────────────────────────── */}
+      {/* ── NAVBAR ─────────────────────────────────────────────────────────── */}
       <header className="relative z-[1500] bg-white border-b border-gray-200 shadow-sm px-4 h-14 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
@@ -288,7 +302,6 @@ export default function MapPage() {
           </div>
         </div>
 
-        {/* Compteur */}
         <div className="flex items-center gap-3 text-sm text-gray-500">
           {loadingMap ? (
             <div className="w-4 h-4 border-2 border-gray-300 border-t-red-500 rounded-full animate-spin" />
@@ -301,7 +314,7 @@ export default function MapPage() {
         </div>
       </header>
 
-      {/* ── BOUTON ADMIN – placé plus bas (top-32 au lieu de top-20) ───────────── */}
+      {/* ── BOUTON ADMIN ───────────────────────────────────────────────────── */}
       {isAdmin && (
         <div className="absolute top-32 right-6 z-[1000]">
           <Link
@@ -309,21 +322,20 @@ export default function MapPage() {
             className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg shadow-md transition-all flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Admin
           </Link>
         </div>
       )}
 
-      {/* ── BARRE FILTRES ──────────────────────────────────────────────────────── */}
+      {/* ── BARRE FILTRES ──────────────────────────────────────────────────── */}
       <div className="relative z-[1400] bg-white/90 backdrop-blur-sm border-b border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto flex-shrink-0">
         <button
           onClick={() => setFilterCat('all')}
           className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all
-            ${filterCat === 'all'
-              ? 'bg-gray-900 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            ${filterCat === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
           Tous
         </button>
@@ -332,21 +344,17 @@ export default function MapPage() {
             key={key}
             onClick={() => setFilterCat(key)}
             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all
-              ${filterCat === key
-                ? 'text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              ${filterCat === key ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             style={filterCat === key ? { backgroundColor: val.color } : {}}
           >
-            <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${filterCat === key ? 'bg-white/70' : val.dot}`}
-            />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterCat === key ? 'bg-white/70' : val.dot}`} />
             {val.label}
           </button>
         ))}
       </div>
 
-      {/* ── CARTE ──────────────────────────────────────────────────────────────── */}
-      <div className="flex-1 relative">
+      {/* ── CARTE ──────────────────────────────────────────────────────────── */}
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
         <MapContainer
           center={position}
           zoom={13}
@@ -359,22 +367,22 @@ export default function MapPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Marqueur utilisateur */}
           <Marker position={position} icon={makeUserIcon()}>
             <Popup>
               <div className="text-center">
-                <p className="font-semibold text-gray-800 text-sm">Vous etes ici</p>
+                <p className="font-semibold text-gray-800 text-sm">Vous êtes ici</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {Array.isArray(position) ? `${position[0].toFixed(5)}, ${position[1].toFixed(5)}` : ''}
+                  {Array.isArray(position)
+                    ? `${(position as [number, number])[0].toFixed(5)}, ${(position as [number, number])[1].toFixed(5)}`
+                    : ''}
                 </p>
               </div>
             </Popup>
           </Marker>
 
-          {/* Marqueurs signalements */}
           {filteredSignalements.map((s) => {
-            const catConf    = categoryConfig[s.categorie] ?? categoryConfig['autre']
-            const statConf   = statutConfig[s.statut]     ?? statutConfig['nouveau']
+            const catConf  = categoryConfig[s.categorie]  ?? categoryConfig['autre']
+            const statConf = statutConfig[s.statut]       ?? statutConfig['nouveau']
             return (
               <Marker
                 key={s.id}
@@ -383,36 +391,19 @@ export default function MapPage() {
               >
                 <Popup minWidth={220}>
                   <div className="py-1 min-w-[200px]">
-                    {/* Header */}
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1">
-                        {s.titre}
-                      </h3>
-                      <span
-                        className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full
-                          ${statConf.bg} ${statConf.text}`}
-                      >
+                      <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1">{s.titre}</h3>
+                      <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${statConf.bg} ${statConf.text}`}>
                         {statConf.label}
                       </span>
                     </div>
-
-                    {/* Catégorie */}
                     <div className="flex items-center gap-1.5 mb-2">
-                      <span
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: catConf.color }}
-                      />
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: catConf.color }} />
                       <span className="text-xs text-gray-500">{catConf.label}</span>
                     </div>
-
-                    {/* Description */}
                     {s.description && (
-                      <p className="text-xs text-gray-600 mb-2 leading-relaxed">
-                        {s.description}
-                      </p>
+                      <p className="text-xs text-gray-600 mb-2 leading-relaxed">{s.description}</p>
                     )}
-
-                    {/* Photo */}
                     {s.photo_url && (
                       <img
                         src={s.photo_url}
@@ -420,11 +411,7 @@ export default function MapPage() {
                         className="w-full h-28 object-cover rounded-lg mb-2 border border-gray-200"
                       />
                     )}
-
-                    {/* Date */}
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      {formatDate(s.created_at)}
-                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">{formatDate(s.created_at)}</p>
                   </div>
                 </Popup>
               </Marker>
@@ -432,7 +419,7 @@ export default function MapPage() {
           })}
         </MapContainer>
 
-        {/* ── BOUTON FLOTTANT ───────────────────────────────────────────────────── */}
+        {/* ── BOUTON FLOTTANT ──────────────────────────────────────────────── */}
         <button
           onClick={() => setIsModalOpen(true)}
           className="absolute bottom-6 right-6 z-[1000] bg-red-600 hover:bg-red-700
@@ -445,12 +432,10 @@ export default function MapPage() {
           </svg>
         </button>
 
-        {/* ── LÉGENDE COMPTEURS ─────────────────────────────────────────────────── */}
+        {/* ── LÉGENDE COMPTEURS ────────────────────────────────────────────── */}
         <div className="absolute bottom-6 left-4 z-[1000] bg-white/90 backdrop-blur-sm
                         rounded-xl shadow-lg border border-gray-200 p-3 hidden sm:block">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Résumé
-          </p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Résumé</p>
           {Object.entries(categoryConfig).map(([key, val]) => {
             const count = signalements.filter(s => s.categorie === key).length
             return (
@@ -464,7 +449,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* ── MODAL ──────────────────────────────────────────────────────────────── */}
+      {/* ── MODAL ──────────────────────────────────────────────────────────── */}
       {isModalOpen && (
         <div
           className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center
@@ -476,7 +461,6 @@ export default function MapPage() {
                        w-full sm:max-w-md max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Handle mobile */}
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 bg-gray-300 rounded-full" />
             </div>
@@ -499,8 +483,7 @@ export default function MapPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-
-                {/* Titre – amélioré pour lisibilité */}
+                {/* Titre */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Titre du problème <span className="text-red-600">*</span>
@@ -518,7 +501,7 @@ export default function MapPage() {
                   />
                 </div>
 
-                {/* Catégorie – amélioré */}
+                {/* Catégorie */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Catégorie <span className="text-red-600">*</span>
@@ -533,21 +516,16 @@ export default function MapPage() {
                                     ${categorie === key
                                       ? 'border-current text-white shadow-md'
                                       : 'border-gray-400 text-gray-700 hover:border-gray-600 hover:bg-gray-50'}`}
-                        style={categorie === key
-                          ? { backgroundColor: val.color, borderColor: val.color }
-                          : {}}
+                        style={categorie === key ? { backgroundColor: val.color, borderColor: val.color } : {}}
                       >
-                        <span
-                          className={`w-3 h-3 rounded-full flex-shrink-0
-                            ${categorie === key ? 'bg-white/80' : val.dot}`}
-                        />
+                        <span className={`w-3 h-3 rounded-full flex-shrink-0 ${categorie === key ? 'bg-white/80' : val.dot}`} />
                         <span className="truncate">{val.label}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Description – amélioré */}
+                {/* Description */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Description <span className="text-gray-500 font-normal text-sm">(optionnel)</span>
@@ -563,7 +541,7 @@ export default function MapPage() {
                   />
                 </div>
 
-                {/* Photo – amélioré */}
+                {/* Photo */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1.5">
                     Photo <span className="text-gray-500 font-normal text-sm">(max 5 Mo)</span>
@@ -586,8 +564,7 @@ export default function MapPage() {
                     </label>
                   ) : (
                     <div className="relative rounded-xl overflow-hidden border border-gray-400 shadow-sm">
-                      <img src={photoPreview} alt="Aperçu"
-                           className="w-full h-44 object-cover"/>
+                      <img src={photoPreview} alt="Aperçu" className="w-full h-44 object-cover"/>
                       <button
                         type="button"
                         onClick={() => { setSelectedFile(null); setPhotoPreview(null) }}
@@ -595,15 +572,14 @@ export default function MapPage() {
                                    rounded-full flex items-center justify-center text-white transition"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* Position – amélioré */}
+                {/* Position */}
                 <div className="flex items-center gap-3 bg-gray-100 rounded-xl px-4 py-3.5 text-sm">
                   <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
@@ -615,7 +591,7 @@ export default function MapPage() {
                   </span>
                 </div>
 
-                {/* Boutons – légèrement améliorés pour contraste */}
+                {/* Boutons */}
                 <div className="flex gap-4 pt-4">
                   <button
                     type="button"
@@ -629,9 +605,9 @@ export default function MapPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className={`flex-1 px-5 py-3.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl
+                    className="flex-1 px-5 py-3.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl
                                transition flex items-center justify-center gap-2
-                               disabled:opacity-60 disabled:cursor-not-allowed shadow-sm`}
+                               disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
                   >
                     {loading ? (
                       <>
@@ -655,16 +631,14 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* ── TOASTS ─────────────────────────────────────────────────────────────── */}
+      {/* ── TOASTS ─────────────────────────────────────────────────────────── */}
       <div className="fixed top-16 right-4 z-[3000] flex flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-lg text-sm font-medium
-                        animate-in slide-in-from-right duration-300 max-w-xs
-                        ${toast.type === 'success'
-                          ? 'bg-green-600 text-white'
-                          : 'bg-red-600 text-white'}`}
+                        max-w-xs
+                        ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
           >
             {toast.type === 'success' ? (
               <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
